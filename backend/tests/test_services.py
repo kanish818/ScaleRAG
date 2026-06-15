@@ -1,4 +1,5 @@
 import os
+import tempfile
 import unittest
 from unittest.mock import patch
 
@@ -9,6 +10,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
 from fastapi import HTTPException  # noqa: E402
 
 from app.services.chunker import chunk_text  # noqa: E402
+from app.services.csv_parser import parse_csv  # noqa: E402
 from app.services.embedder import EmbeddingRateLimitError, embed_query, embed_texts  # noqa: E402
 from app.services.injection_guard import check_injection, sanitize_retrieved_chunks  # noqa: E402
 from app.services.rate_limiter import InMemoryRateLimiter  # noqa: E402
@@ -77,6 +79,27 @@ class EmbedderTests(unittest.TestCase):
 
         self.assertEqual(len(doc_embedding), 768)
         self.assertEqual(doc_embedding, query_embedding)
+
+
+class CsvParserTests(unittest.TestCase):
+    def test_preserves_field_value_lookup_keys(self):
+        csv_text = (
+            "row_number,logical_page,document_id,project,section,field,value,notes\n"
+            "1,2,SEC-00003,Beacon,controls,retention_days,1095,Controlled row\n"
+        )
+        with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8") as handle:
+            handle.write(csv_text)
+            path = handle.name
+        try:
+            pages = parse_csv(path)
+        finally:
+            os.remove(path)
+
+        self.assertEqual(len(pages), 1)
+        self.assertEqual(pages[0]["page_num"], 2)
+        self.assertIn("Lookup keys: document_id SEC-00003", pages[0]["text"])
+        self.assertIn("field: retention_days", pages[0]["text"])
+        self.assertIn("value: 1095", pages[0]["text"])
 
 
 if __name__ == "__main__":
