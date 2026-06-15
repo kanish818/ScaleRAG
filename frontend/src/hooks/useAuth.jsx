@@ -3,7 +3,8 @@ import { login as apiLogin, register as apiRegister, getMe } from '../services/a
 import axios from 'axios';
 
 const AuthContext = createContext(null);
-const BACKEND_URL = (import.meta.env.VITE_API_ORIGIN || '').replace(/\/+$/, '') || '';
+const runtimeOrigin = window.__SCALERAG_CONFIG__?.API_ORIGIN || '';
+const BACKEND_URL = (runtimeOrigin || import.meta.env.VITE_API_ORIGIN || '').replace(/\/+$/, '');
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);

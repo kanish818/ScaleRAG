@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const apiOrigin = (import.meta.env.VITE_API_ORIGIN || '').replace(/\/+$/, '');
+const runtimeOrigin = window.__SCALERAG_CONFIG__?.API_ORIGIN || '';
+const apiOrigin = (runtimeOrigin || import.meta.env.VITE_API_ORIGIN || '').replace(/\/+$/, '');
 const API_BASE_URL = apiOrigin ? `${apiOrigin}/api` : '/api';
 
 const api = axios.create({ baseURL: API_BASE_URL, headers: { 'Content-Type': 'application/json' } });
@@ -60,7 +61,14 @@ export const streamChat = async (conversationId, question, documentIds, signal) 
   });
   if (!resp.ok) {
     if (resp.status === 401) { localStorage.removeItem('scalerag_token'); window.location.href = '/'; }
-    throw new Error(`Stream failed: ${resp.status}`);
+    let detail = `Stream failed: ${resp.status}`;
+    try {
+      const payload = await resp.json();
+      detail = payload.detail || detail;
+    } catch {
+      // Preserve the status-based fallback for non-JSON responses.
+    }
+    throw new Error(detail);
   }
   return resp;
 };
