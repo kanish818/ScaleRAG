@@ -17,7 +17,7 @@ function formatBytes(b) {
 
 function StatusBadge({ status }) {
   if (status === 'ready') return <span className="badge badge-success">Ready</span>;
-  if (['processing','pending','queued'].includes(status)) return <span className="badge badge-warning"><span className="spinner spinner-sm" style={{ borderTopColor: 'var(--warning)', borderColor: 'rgba(245,158,11,0.2)', width: '10px', height: '10px' }}/>Processing</span>;
+  if (['processing','pending','queued'].includes(status)) return <span className="badge badge-warning"><span className="spinner spinner-sm" style={{ borderTopColor: 'var(--warning)', borderColor: 'rgba(245,165,36,0.2)', width: '10px', height: '10px' }}/>Processing</span>;
   if (['error','failed'].includes(status)) return <span className="badge badge-error">Failed</span>;
   return <span className="badge badge-accent">{status}</span>;
 }
