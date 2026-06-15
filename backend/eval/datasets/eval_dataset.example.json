@@ -1,0 +1,53 @@
+[
+  {
+    "id": "employee_fact",
+    "question": "Who is the employee mentioned in this file?",
+    "question_type": "fact",
+    "document_filenames": [
+      "replace_with_uploaded_file.pdf"
+    ],
+    "expected_sources": [
+      {
+        "filename": "replace_with_uploaded_file.pdf",
+        "page_num": 1
+      }
+    ],
+    "expected_answer_contains": [
+      "replace with the expected entity"
+    ],
+    "should_answer": true,
+    "notes": "Direct fact lookup."
+  },
+  {
+    "id": "csv_absence",
+    "question": "Does this dataset mention Kubernetes?",
+    "question_type": "no_answer",
+    "document_filenames": [
+      "replace_with_uploaded_file.csv"
+    ],
+    "expected_sources": [],
+    "expected_answer_contains": [],
+    "should_answer": false,
+    "notes": "Checks no-answer behavior."
+  },
+  {
+    "id": "html_summary",
+    "question": "Summarize the main recommendations.",
+    "question_type": "summary",
+    "document_filenames": [
+      "replace_with_uploaded_file.html"
+    ],
+    "expected_sources": [
+      {
+        "filename": "replace_with_uploaded_file.html",
+        "page_num": 1
+      }
+    ],
+    "expected_answer_contains": [
+      "replace with one expected recommendation",
+      "replace with another expected recommendation"
+    ],
+    "should_answer": true,
+    "notes": "Checks retrieval over HTML."
+  }
+]

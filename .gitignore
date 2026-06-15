@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+
+# Node
+node_modules/
+frontend/dist/
+
+# Local runtime data
+backend/.env
+backend/data/
+backend/tmp/
+backend/eval/reports/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.vscode/

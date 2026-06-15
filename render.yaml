@@ -1,0 +1,50 @@
+services:
+  - type: web
+    name: scalerag-backend
+    runtime: docker
+    dockerfilePath: ./Dockerfile
+    rootDir: backend
+    region: oregon
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GEMINI_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: JWT_SECRET_KEY
+        sync: false
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SERVICE_ROLE_KEY
+        sync: false
+      - key: SUPABASE_ANON_KEY
+        sync: false
+      - key: SUPABASE_STORAGE_BUCKET
+        value: documents
+      - key: DATABASE_URL
+        sync: false
+      - key: COHERE_API_KEY
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+
+  - type: web
+    name: scalerag-frontend
+    runtime: static
+    buildCommand: npm ci && npm run build
+    staticPublishPath: dist
+    rootDir: frontend
+    region: oregon
+    plan: free
+    routes:
+      - type: rewrite
+        source: /*
+        destination: /index.html
+    envVars:
+      - key: VITE_API_ORIGIN
+        sync: false
