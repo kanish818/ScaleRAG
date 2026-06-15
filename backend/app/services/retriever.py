@@ -20,6 +20,7 @@ from app.services.reranker import rerank
 logger = logging.getLogger(__name__)
 
 RRF_K = 60
+DOC_ID_RE = re.compile(r"\b([A-Z]+-\d{5})\b", re.IGNORECASE)
 SUMMARY_HINTS = ("summary", "summarize", "overview", "important points", "main points")
 ACTION_HINTS = ("action", "next step", "todo", "task", "recommendation", "plan")
 FIELD_HINTS = {
@@ -60,6 +61,25 @@ def choose_top_k(query: str) -> int:
 
 def _tokenize(text: str) -> List[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def extract_doc_ids(query: str) -> List[str]:
+    return list(dict.fromkeys(match.upper() for match in DOC_ID_RE.findall(query or "")))
+
+
+def _chunk_matches_doc_ids(chunk: Dict[str, Any], query_doc_ids: List[str]) -> bool:
+    if not query_doc_ids:
+        return True
+    filename = str(chunk.get("filename", "")).upper()
+    text = str(chunk.get("text", "")).upper()
+    return any(doc_id in filename or doc_id in text for doc_id in query_doc_ids)
+
+
+def filter_results_by_doc_ids(results: List[Dict[str, Any]], query_doc_ids: List[str]) -> List[Dict[str, Any]]:
+    if not query_doc_ids:
+        return results
+    filtered = [item for item in results if _chunk_matches_doc_ids(item, query_doc_ids)]
+    return filtered or results
 
 
 def _rrf(ranked_lists: List[List[Dict[str, Any]]], key: str = "chunk_id") -> List[Dict[str, Any]]:
@@ -109,6 +129,7 @@ def hybrid_search(
         return []
 
     expanded = expand_query(query)
+    query_doc_ids = extract_doc_ids(query)
 
     # 1. Dense vector search
     vector_results = vector_store.search(
@@ -117,10 +138,12 @@ def hybrid_search(
         doc_ids=doc_ids,
         n_results=max(n_results * 3, 15),
     )
+    vector_results = filter_results_by_doc_ids(vector_results, query_doc_ids)
     logger.info("Vector search: %d results", len(vector_results))
 
     # 2. BM25 sparse search
     all_chunks = vector_store.get_all_chunks_for_docs(user_id=user_id, doc_ids=doc_ids)
+    all_chunks = filter_results_by_doc_ids(all_chunks, query_doc_ids)
     bm25_results: List[Dict[str, Any]] = []
     if all_chunks:
         corpus = [_tokenize(c["text"]) for c in all_chunks]

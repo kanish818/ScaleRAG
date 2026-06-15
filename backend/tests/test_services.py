@@ -15,6 +15,7 @@ from app.services.embedder import EmbeddingRateLimitError, embed_query, embed_te
 from app.services.injection_guard import check_injection, sanitize_retrieved_chunks  # noqa: E402
 from app.services.rate_limiter import InMemoryRateLimiter  # noqa: E402
 from app.services.reranker import rerank  # noqa: E402
+from app.services.retriever import extract_doc_ids, filter_results_by_doc_ids  # noqa: E402
 
 
 class InjectionGuardTests(unittest.TestCase):
@@ -129,6 +130,43 @@ class RerankerTests(unittest.TestCase):
             top_n=2,
         )
         self.assertEqual(ranked[0]["chunk_id"], "2")
+
+    def test_doc_id_rerank_prefers_exact_document(self):
+        results = [
+            {
+                "chunk_id": "1",
+                "filename": "ENG-00010_River_Regional_compliance_chec.csv",
+                "text": "field: verification_marker\nvalue: SKYLINE-00010-8265",
+                "section_heading": "CSV Row",
+                "score": 1.2,
+            },
+            {
+                "chunk_id": "2",
+                "filename": "ENG-00082_Summit_Product_launch_readiness.html",
+                "text": "Verification marker: SKYLINE-00082-4726",
+                "section_heading": "Audit",
+                "score": 0.6,
+            },
+        ]
+        ranked = rerank(
+            "What is the verification marker for document ENG-00082?",
+            results,
+            top_n=2,
+        )
+        self.assertEqual(ranked[0]["chunk_id"], "2")
+
+
+class RetrieverTests(unittest.TestCase):
+    def test_extract_doc_ids(self):
+        self.assertEqual(extract_doc_ids("What SLA in hours is listed for SEC-00092?"), ["SEC-00092"])
+
+    def test_filter_results_by_doc_ids_prefers_exact_match(self):
+        results = [
+            {"chunk_id": "1", "filename": "SEC-00012_Sapphire_Regional_compliance_chec.csv", "text": "field: sla_hours\nvalue: 4"},
+            {"chunk_id": "2", "filename": "SEC-00092_Falcon_Internal_reimbursement_g.pdf", "text": "The response SLA is 4 hours for SEC-00092."},
+        ]
+        filtered = filter_results_by_doc_ids(results, ["SEC-00092"])
+        self.assertEqual([item["chunk_id"] for item in filtered], ["2"])
 
 
 if __name__ == "__main__":

@@ -13,6 +13,7 @@ from app.core.config import settings
 logger = logging.getLogger(__name__)
 
 RRF_K = 60
+DOC_ID_RE = re.compile(r"\b([A-Z]+-\d{5})\b", re.IGNORECASE)
 FIELD_HINTS = {
     "retention_days": ("retention period", "retention days", "retention"),
     "budget_limit_inr": ("budget limit", "budget", "inr"),
@@ -25,6 +26,10 @@ FIELD_HINTS = {
 
 def _tokenize(text: str) -> List[str]:
     return re.findall(r"[a-z0-9]+", text.lower())
+
+
+def _extract_doc_ids(query: str) -> List[str]:
+    return list(dict.fromkeys(match.upper() for match in DOC_ID_RE.findall(query or "")))
 
 
 def _term_overlap(query_tokens: List[str], text: str) -> float:
@@ -48,22 +53,36 @@ def _field_match_bonus(query: str, text: str) -> float:
     return bonus
 
 
+def _doc_id_bonus(query: str, text: str, filename: str) -> float:
+    query_doc_ids = _extract_doc_ids(query)
+    if not query_doc_ids:
+        return 0.0
+    haystack = f"{filename}\n{text}".upper()
+    if any(doc_id in haystack for doc_id in query_doc_ids):
+        return 2.4
+    return -1.2
+
+
 def _local_rerank(query: str, results: List[Dict[str, Any]], top_n: int) -> List[Dict[str, Any]]:
     """Fallback: term-overlap + exact phrase + section heading boost."""
     query_tokens = _tokenize(query)
     lowered = query.lower()
     scored = []
     for item in results:
-        overlap = _term_overlap(query_tokens, item.get("text", ""))
+        text = item.get("text", "")
+        filename = item.get("filename", "")
+        overlap = _term_overlap(query_tokens, text)
         section_overlap = _term_overlap(query_tokens, item.get("section_heading", ""))
-        exact_bonus = 0.2 if lowered in item.get("text", "").lower() else 0.0
-        field_bonus = _field_match_bonus(query, item.get("text", ""))
+        exact_bonus = 0.2 if lowered in text.lower() else 0.0
+        field_bonus = _field_match_bonus(query, text)
+        doc_id_bonus = _doc_id_bonus(query, text, filename)
         score = (
             float(item.get("score", 0.0))
             + overlap * 1.1
             + section_overlap * 0.35
             + exact_bonus
             + field_bonus
+            + doc_id_bonus
         )
         scored.append({**item, "score": score})
     scored.sort(key=lambda x: x["score"], reverse=True)
