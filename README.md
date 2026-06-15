@@ -3,8 +3,8 @@
 > Production-grade Retrieval-Augmented Generation assistant capable of operating reliably at scale.  
 > Supports 10,000+ documents · PDF, HTML, CSV · Hybrid retrieval · Streaming · Hallucination detection
 
-**Live Demo:** add after Render deployment  
-**Backend API Docs:** add after Render deployment + `/docs`
+**Live Demo:** [https://scalerag-frontend.onrender.com](https://scalerag-frontend.onrender.com)  
+**Backend API Docs:** [https://scalerag-backend.onrender.com/docs](https://scalerag-backend.onrender.com/docs)
 
 ---
 
