@@ -1,7 +1,7 @@
 import os
 import tempfile
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 os.environ.setdefault("GROQ_API_KEY", "test")
 os.environ.setdefault("GEMINI_API_KEY", "test")
@@ -16,6 +16,7 @@ from app.services.injection_guard import check_injection, sanitize_retrieved_chu
 from app.services.rate_limiter import InMemoryRateLimiter  # noqa: E402
 from app.services.reranker import rerank  # noqa: E402
 from app.services.retriever import extract_doc_ids, filter_results_by_doc_ids  # noqa: E402
+from app.services.supabase_storage import SupabaseStorageService  # noqa: E402
 
 
 class InjectionGuardTests(unittest.TestCase):
@@ -167,6 +168,34 @@ class RetrieverTests(unittest.TestCase):
         ]
         filtered = filter_results_by_doc_ids(results, ["SEC-00092"])
         self.assertEqual([item["chunk_id"] for item in filtered], ["2"])
+
+
+class StorageTests(unittest.TestCase):
+    def test_download_retries_on_transient_502(self):
+        service = SupabaseStorageService()
+        error_response = MagicMock()
+        error_response.status_code = 502
+        error_response.text = "bad gateway"
+
+        ok_response = MagicMock()
+        ok_response.status_code = 200
+        ok_response.content = b"hello"
+
+        mock_client = MagicMock()
+        mock_client.get.side_effect = [error_response, ok_response]
+        mock_context = MagicMock()
+        mock_context.__enter__.return_value = mock_client
+        mock_context.__exit__.return_value = False
+
+        with patch("app.services.supabase_storage.httpx.Client", return_value=mock_context), \
+                patch("app.services.supabase_storage.time.sleep", return_value=None):
+            temp_path = service.download_to_tempfile("demo/test.csv")
+
+        try:
+            with open(temp_path, "rb") as handle:
+                self.assertEqual(handle.read(), b"hello")
+        finally:
+            os.remove(temp_path)
 
 
 if __name__ == "__main__":
