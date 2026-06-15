@@ -101,3 +101,32 @@ def parse_csv(file_path: str) -> List[Dict[str, Any]]:
 
     logger.info("Parsed %d pages from CSV '%s' (%d rows).", len(pages), filename, total_rows)
     return pages
+
+
+def chunk_csv_pages(pages: List[Dict[str, Any]], filename: str) -> List[Dict[str, Any]]:
+    chunks: List[Dict[str, Any]] = []
+    chunk_index = 0
+
+    for page in pages:
+        page_num = int(page.get("page_num", 1) or 1)
+        parts = [part.strip() for part in str(page.get("text", "")).split("\n\n") if part.strip()]
+        if not parts:
+            continue
+
+        header = parts[0]
+        row_blocks = parts[1:] or [header]
+        for block in row_blocks:
+            text = f"{header}\n{block}".strip() if block != header else block
+            chunks.append(
+                {
+                    "filename": filename,
+                    "page_num": page_num,
+                    "chunk_index": chunk_index,
+                    "section_heading": "CSV Row",
+                    "text": text,
+                }
+            )
+            chunk_index += 1
+
+    logger.info("Created %d CSV row chunks from %d logical pages of '%s'.", len(chunks), len(pages), filename)
+    return chunks

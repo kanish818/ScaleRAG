@@ -17,6 +17,7 @@ from app.core.database import SessionLocal
 from app.models.document import Document
 from app.services import vector_store
 from app.services.chunker import chunk_text
+from app.services.csv_parser import chunk_csv_pages
 from app.services.document_summary import summarize_document
 from app.services.embedder import embed_texts
 from app.services.supabase_storage import storage_service
@@ -173,7 +174,10 @@ class DocumentProcessor:
                 pages = _parse_file(temp_path, doc.file_type or "pdf", heartbeat=lambda: self._heartbeat(db, doc))
                 self._heartbeat(db, doc)
 
-                chunks = chunk_text(pages, doc.filename)
+                if (doc.file_type or "pdf") == "csv":
+                    chunks = chunk_csv_pages(pages, doc.filename)
+                else:
+                    chunks = chunk_text(pages, doc.filename)
                 if not chunks:
                     raise RuntimeError("No extractable text found in this file.")
                 self._heartbeat(db, doc)

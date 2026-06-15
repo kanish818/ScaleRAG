@@ -10,7 +10,7 @@ os.environ.setdefault("JWT_SECRET_KEY", "test-secret")
 from fastapi import HTTPException  # noqa: E402
 
 from app.services.chunker import chunk_text  # noqa: E402
-from app.services.csv_parser import parse_csv  # noqa: E402
+from app.services.csv_parser import chunk_csv_pages, parse_csv  # noqa: E402
 from app.services.embedder import EmbeddingRateLimitError, embed_query, embed_texts  # noqa: E402
 from app.services.injection_guard import check_injection, sanitize_retrieved_chunks  # noqa: E402
 from app.services.rate_limiter import InMemoryRateLimiter  # noqa: E402
@@ -86,12 +86,14 @@ class CsvParserTests(unittest.TestCase):
         csv_text = (
             "row_number,logical_page,document_id,project,section,field,value,notes\n"
             "1,2,SEC-00003,Beacon,controls,retention_days,1095,Controlled row\n"
+            "2,2,SEC-00003,Beacon,controls,approval_authority,Security Lead,Controlled row\n"
         )
         with tempfile.NamedTemporaryFile("w", suffix=".csv", delete=False, encoding="utf-8") as handle:
             handle.write(csv_text)
             path = handle.name
         try:
             pages = parse_csv(path)
+            chunks = chunk_csv_pages(pages, "sample.csv")
         finally:
             os.remove(path)
 
@@ -100,6 +102,8 @@ class CsvParserTests(unittest.TestCase):
         self.assertIn("Lookup keys: document_id SEC-00003", pages[0]["text"])
         self.assertIn("field: retention_days", pages[0]["text"])
         self.assertIn("value: 1095", pages[0]["text"])
+        self.assertEqual(len(chunks), 2)
+        self.assertTrue(any("field: retention_days" in chunk["text"] for chunk in chunks))
 
 
 if __name__ == "__main__":
