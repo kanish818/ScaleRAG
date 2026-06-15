@@ -14,6 +14,7 @@ from app.services.csv_parser import chunk_csv_pages, parse_csv  # noqa: E402
 from app.services.embedder import EmbeddingRateLimitError, embed_query, embed_texts  # noqa: E402
 from app.services.injection_guard import check_injection, sanitize_retrieved_chunks  # noqa: E402
 from app.services.rate_limiter import InMemoryRateLimiter  # noqa: E402
+from app.services.reranker import rerank  # noqa: E402
 
 
 class InjectionGuardTests(unittest.TestCase):
@@ -104,6 +105,30 @@ class CsvParserTests(unittest.TestCase):
         self.assertIn("value: 1095", pages[0]["text"])
         self.assertEqual(len(chunks), 2)
         self.assertTrue(any("field: retention_days" in chunk["text"] for chunk in chunks))
+
+
+class RerankerTests(unittest.TestCase):
+    def test_field_aware_rerank_prefers_matching_csv_row(self):
+        results = [
+            {
+                "chunk_id": "1",
+                "text": "field: background_note\nvalue: This document is part of the internal knowledge archive.",
+                "section_heading": "CSV Row",
+                "score": 0.9,
+            },
+            {
+                "chunk_id": "2",
+                "text": "field: retention_days\nvalue: 1095\ndocument_id: SEC-00003\nproject: Beacon",
+                "section_heading": "CSV Row",
+                "score": 0.7,
+            },
+        ]
+        ranked = rerank(
+            "What is the retention period in days for Project Beacon in document SEC-00003?",
+            results,
+            top_n=2,
+        )
+        self.assertEqual(ranked[0]["chunk_id"], "2")
 
 
 if __name__ == "__main__":

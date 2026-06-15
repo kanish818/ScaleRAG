@@ -22,6 +22,14 @@ logger = logging.getLogger(__name__)
 RRF_K = 60
 SUMMARY_HINTS = ("summary", "summarize", "overview", "important points", "main points")
 ACTION_HINTS = ("action", "next step", "todo", "task", "recommendation", "plan")
+FIELD_HINTS = {
+    "retention_days": ("retention period", "retention days", "retention"),
+    "budget_limit_inr": ("budget limit", "budget", "inr"),
+    "sla_hours": ("sla", "hours"),
+    "approval_authority": ("approval authority", "approved by", "approval owner"),
+    "risk_level": ("risk level", "risk"),
+    "verification_marker": ("verification marker", "marker", "verification"),
+}
 # Max chars per chunk after context compression
 COMPRESSED_CHUNK_CHARS = 600
 
@@ -39,6 +47,9 @@ def expand_query(query: str) -> str:
         hints.append("skills technologies tools frameworks expertise")
     if "project" in low:
         hints.append("projects work experience accomplishments")
+    for canonical_field, patterns in FIELD_HINTS.items():
+        if any(pattern in low for pattern in patterns):
+            hints.append(f"{canonical_field} field value {canonical_field.replace('_', ' ')}")
     return f"{query} {' '.join(hints)}".strip() if hints else query
 
 
