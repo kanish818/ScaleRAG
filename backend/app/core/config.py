@@ -34,6 +34,14 @@ class Settings(BaseSettings):
     # App
     MAX_UPLOAD_SIZE_MB: int = 50
     TEMP_DIR: str = "./tmp"
+    EMBEDDING_BATCH_SIZE: int = 100
+    EMBEDDING_TIMEOUT_SECONDS: int = 45
+    EMBEDDING_INTER_BATCH_DELAY_SECONDS: float = 0.1
+    EMBEDDING_MAX_RETRIES: int = 3
+    EMBEDDING_RATE_LIMIT_RETRIES: int = 2
+    EMBEDDING_RATE_LIMIT_BASE_DELAY_SECONDS: int = 15
+    EMBEDDING_RATE_LIMIT_MAX_DELAY_SECONDS: int = 60
+    EMBEDDING_LOCAL_FALLBACK_ENABLED: bool = True
 
     # Rate limiting (requests per minute per user)
     RATE_LIMIT_RPM: int = 60
