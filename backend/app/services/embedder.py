@@ -1,5 +1,5 @@
 """
-Embedder — Google Gemini gemini-embedding-2 (3072 dims).
+Embedder — Google Gemini gemini-embedding-2 (768 dims).
 Batches 100 texts per call with retry + rate-limit handling.
 """
 from __future__ import annotations
@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _client = genai.Client(api_key=settings.GEMINI_API_KEY)
 EMBEDDING_MODEL = "gemini-embedding-2"
+EMBEDDING_DIMENSIONS = 768
 BATCH_SIZE = 100
 INTER_BATCH_DELAY = 0.1
 EMBED_TIMEOUT = 45
@@ -49,7 +50,10 @@ def embed_texts(
                     _client.models.embed_content,
                     model=EMBEDDING_MODEL,
                     contents=batch,
-                    config=types.EmbedContentConfig(task_type=task_type),
+                    config=types.EmbedContentConfig(
+                        task_type=task_type,
+                        output_dimensionality=EMBEDDING_DIMENSIONS,
+                    ),
                 )
                 result = future.result(timeout=EMBED_TIMEOUT)
                 all_embeddings.extend(e.values for e in result.embeddings)

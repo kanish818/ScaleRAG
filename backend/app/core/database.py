@@ -79,6 +79,26 @@ def create_tables() -> None:
     Base.metadata.create_all(bind=engine)
     if not _is_sqlite_url(DATABASE_URL):
         with engine.begin() as connection:
+            # Gemini's 768-dimensional output fits pgvector's HNSW vector limit.
+            connection.execute(text(
+                """
+                DO $$
+                BEGIN
+                    IF (
+                        SELECT format_type(a.atttypid, a.atttypmod)
+                        FROM pg_attribute a
+                        WHERE a.attrelid = 'document_embeddings'::regclass
+                          AND a.attname = 'embedding'
+                          AND NOT a.attisdropped
+                    ) <> 'vector(768)' THEN
+                        ALTER TABLE document_embeddings
+                        ALTER COLUMN embedding TYPE vector(768)
+                        USING subvector(embedding, 1, 768)::vector(768);
+                    END IF;
+                END
+                $$;
+                """
+            ))
             # HNSW index for fast ANN search at 200K+ vectors
             connection.execute(text(
                 """

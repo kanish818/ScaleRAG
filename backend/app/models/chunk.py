@@ -24,7 +24,7 @@ class DocumentEmbedding(Base):
     chunk_id = Column(Integer, ForeignKey("document_chunks.id", ondelete="CASCADE"), primary_key=True, index=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
-    embedding = Column(Vector(3072), nullable=False)
+    embedding = Column(Vector(768), nullable=False)
 
 
 Index("ix_document_chunks_doc_chunk", DocumentChunk.document_id, DocumentChunk.chunk_index, unique=True)

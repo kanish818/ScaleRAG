@@ -29,7 +29,7 @@
 │    │  HTML → BeautifulSoup               │                   │
 │    │  CSV → Pandas                       │                   │
 │    │  Chunker (semantic + overlap)       │                   │
-│    │  Embedder: Gemini gemini-embedding-2│                   │
+│    │  Embedder: Gemini embedding (768d) │                   │
 │    │  Background worker + retry          │                   │
 │    └──────────────┬──────────────────────┘                   │
 │                   │ 200K+ vectors                            │
@@ -107,7 +107,7 @@
 | Backend | FastAPI (Python 3.11) |
 | Primary LLM | Groq `llama-3.3-70b-versatile` |
 | Fallback LLM | Google Gemini 1.5 Flash |
-| Embeddings | Google Gemini `gemini-embedding-2` (3072 dims) |
+| Embeddings | Google Gemini `gemini-embedding-2` (768 dims) |
 | Vector Store | Supabase pgvector + HNSW index |
 | Keyword Search | BM25 (rank-bm25) |
 | Reranker | Cohere `rerank-v3.5` |
