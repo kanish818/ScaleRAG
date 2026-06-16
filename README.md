@@ -256,7 +256,7 @@ Interactive API docs available at `/docs` (Swagger UI) and `/redoc` (ReDoc) afte
 
 ## Evaluation Report
 
-See [EVALUATION_REPORT.md](/C:/Projects2/Grade%20Chatbot/ScaleRAG/EVALUATION_REPORT.md) for the evaluation workflow and report template, and [ARCHITECTURE.md](/C:/Projects2/Grade%20Chatbot/ScaleRAG/ARCHITECTURE.md) / [API_DOCUMENTATION.md](/C:/Projects2/Grade%20Chatbot/ScaleRAG/API_DOCUMENTATION.md) for submission artifacts.
+See [EVALUATION_REPORT.md](./EVALUATION_REPORT.md) for the evaluation workflow and report template, and [ARCHITECTURE.md](./ARCHITECTURE.md) / [API_DOCUMENTATION.md](./API_DOCUMENTATION.md) for submission artifacts.
 
 Benchmark outputs should include:
 - Retrieval precision metrics
@@ -266,4 +266,3 @@ Benchmark outputs should include:
 
 ---
 
-Built for Fastigo Technology Round 2 Assessment — AI Engineer

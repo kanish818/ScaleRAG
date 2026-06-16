@@ -2,11 +2,11 @@
 
 ## What is included
 
-- Retrieval benchmark script: [scripts/benchmark.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/scripts/benchmark.py)
-- Bulk ingestion script: [scripts/bulk_ingest.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/scripts/bulk_ingest.py)
-- Synthetic dataset generator: [scripts/generate_test_docs.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/scripts/generate_test_docs.py)
-- Question-level evaluation harness: [backend/eval/run_eval.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/backend/eval/run_eval.py)
-- Namespace-isolated public demo smoke harness: [scripts/rag_production_smoke_test.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/scripts/rag_production_smoke_test.py)
+- Retrieval benchmark script: [scripts/benchmark.py](./scripts/benchmark.py)
+- Bulk ingestion script: [scripts/bulk_ingest.py](./scripts/bulk_ingest.py)
+- Synthetic dataset generator: [scripts/generate_test_docs.py](./scripts/generate_test_docs.py)
+- Question-level evaluation harness: [backend/eval/run_eval.py](./backend/eval/run_eval.py)
+- Namespace-isolated public demo smoke harness: [scripts/rag_production_smoke_test.py](./scripts/rag_production_smoke_test.py)
 
 ## Evaluation methodology
 
