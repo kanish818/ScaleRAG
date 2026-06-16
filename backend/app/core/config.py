@@ -32,21 +32,34 @@ class Settings(BaseSettings):
     SUPABASE_STORAGE_BUCKET: str = Field(default="documents", env="SUPABASE_STORAGE_BUCKET")
 
     # App
-    MAX_UPLOAD_SIZE_MB: int = 50
-    TEMP_DIR: str = "./tmp"
-    EMBEDDING_BATCH_SIZE: int = 100
-    EMBEDDING_TIMEOUT_SECONDS: int = 45
-    EMBEDDING_INTER_BATCH_DELAY_SECONDS: float = 0.1
-    EMBEDDING_MAX_RETRIES: int = 3
-    EMBEDDING_RATE_LIMIT_RETRIES: int = 0
-    EMBEDDING_RATE_LIMIT_BASE_DELAY_SECONDS: int = 15
-    EMBEDDING_RATE_LIMIT_MAX_DELAY_SECONDS: int = 60
-    EMBEDDING_LOCAL_FALLBACK_ENABLED: bool = True
+    MAX_UPLOAD_SIZE_MB: int = Field(default=50, env="MAX_UPLOAD_SIZE_MB")
+    TEMP_DIR: str = Field(default="./tmp", env="TEMP_DIR")
+    DOCUMENT_PROCESSOR_WORKERS: int = Field(default=2, env="DOCUMENT_PROCESSOR_WORKERS")
+    EMBEDDING_BATCH_SIZE: int = Field(default=100, env="EMBEDDING_BATCH_SIZE")
+    EMBEDDING_TIMEOUT_SECONDS: int = Field(default=45, env="EMBEDDING_TIMEOUT_SECONDS")
+    EMBEDDING_INTER_BATCH_DELAY_SECONDS: float = Field(
+        default=0.1,
+        env="EMBEDDING_INTER_BATCH_DELAY_SECONDS",
+    )
+    EMBEDDING_MAX_RETRIES: int = Field(default=3, env="EMBEDDING_MAX_RETRIES")
+    EMBEDDING_RATE_LIMIT_RETRIES: int = Field(default=0, env="EMBEDDING_RATE_LIMIT_RETRIES")
+    EMBEDDING_RATE_LIMIT_BASE_DELAY_SECONDS: int = Field(
+        default=15,
+        env="EMBEDDING_RATE_LIMIT_BASE_DELAY_SECONDS",
+    )
+    EMBEDDING_RATE_LIMIT_MAX_DELAY_SECONDS: int = Field(
+        default=60,
+        env="EMBEDDING_RATE_LIMIT_MAX_DELAY_SECONDS",
+    )
+    EMBEDDING_LOCAL_FALLBACK_ENABLED: bool = Field(
+        default=True,
+        env="EMBEDDING_LOCAL_FALLBACK_ENABLED",
+    )
 
     # Rate limiting (requests per minute per user)
-    RATE_LIMIT_RPM: int = 60
-    AUTH_RATE_LIMIT_RPM: int = 20
-    UPLOAD_RATE_LIMIT_RPM: int = 12
+    RATE_LIMIT_RPM: int = Field(default=60, env="RATE_LIMIT_RPM")
+    AUTH_RATE_LIMIT_RPM: int = Field(default=20, env="AUTH_RATE_LIMIT_RPM")
+    UPLOAD_RATE_LIMIT_RPM: int = Field(default=12, env="UPLOAD_RATE_LIMIT_RPM")
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

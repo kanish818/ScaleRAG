@@ -228,6 +228,19 @@ python scripts/benchmark.py --url http://localhost:8000 \
 | `SUPABASE_STORAGE_BUCKET` | Storage bucket name (`documents`) |
 | `DATABASE_URL` | Supabase Postgres session pooler URI |
 | `FRONTEND_URL` | Frontend origin (for CORS) |
+| `DOCUMENT_PROCESSOR_WORKERS` | Number of background document processing workers (default `2`) |
+| `UPLOAD_RATE_LIMIT_RPM` | Upload request rate limit; keep conservative on the public demo |
+| `EMBEDDING_BATCH_SIZE` | Embedding batch size for chunk indexing throughput |
+| `EMBEDDING_MAX_RETRIES` | Retries for embedding provider failures |
+| `EMBEDDING_RATE_LIMIT_RETRIES` | Additional retries specifically for provider rate limiting |
+
+For public-demo stability, prefer:
+
+- `DOCUMENT_PROCESSOR_WORKERS=1` or `2`
+- `UPLOAD_RATE_LIMIT_RPM` unchanged unless uploads are already batched
+- bulk ingest through `scripts/bulk_ingest.py` with batch sizes around `25` to `50`
+
+For better-provisioned environments, increase worker count and embedding throughput gradually while monitoring latency and provider rate limits.
 
 ---
 

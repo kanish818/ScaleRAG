@@ -16,6 +16,12 @@ from typing import List
 
 import httpx
 
+APPROX_TOKEN_CHARS = 4
+MODEL_COSTS_PER_1K_TOKENS = {
+    "input_usd": 0.0005,
+    "output_usd": 0.0015,
+}
+
 TEST_QUESTIONS = [
     "What are the main topics covered in this document?",
     "Summarize the key points.",
@@ -70,6 +76,8 @@ def ask_question(base_url: str, token: str, conv_id: int, question: str, doc_ids
         "ttft_ms": round((first_token_time - start) * 1000) if first_token_time else None,
         "total_ms": round((end - start) * 1000),
         "response_len": len(full_response),
+        "approx_input_tokens": max(1, len(question) // APPROX_TOKEN_CHARS),
+        "approx_output_tokens": max(1, len(full_response) // APPROX_TOKEN_CHARS),
     }
 
 
@@ -89,6 +97,8 @@ def main():
     print(f"Created conversation id={conv_id}\n")
 
     latencies, ttfts = [], []
+    approx_input_tokens = 0
+    approx_output_tokens = 0
     questions = (TEST_QUESTIONS * ((args.queries // len(TEST_QUESTIONS)) + 1))[:args.queries]
 
     for i, q in enumerate(questions):
@@ -97,6 +107,8 @@ def main():
             latencies.append(result["total_ms"])
             if result["ttft_ms"]:
                 ttfts.append(result["ttft_ms"])
+            approx_input_tokens += result["approx_input_tokens"]
+            approx_output_tokens += result["approx_output_tokens"]
             print(f"  [{i+1}/{args.queries}] {q[:50]!r} → {result['total_ms']}ms (TTFT: {result['ttft_ms']}ms)")
         except Exception as exc:
             print(f"  [{i+1}/{args.queries}] ERROR: {exc}")
@@ -114,6 +126,13 @@ def main():
         print(f"  Mean:         {round(statistics.mean(latencies))}ms")
         print(f"  TTFT P50:     {ttfts[len(ttfts)//2] if ttfts else 'N/A'}ms")
         print(f"  TTFT P95:     {ttfts[int(len(ttfts)*0.95)] if ttfts else 'N/A'}ms")
+        total_cost_usd = (
+            (approx_input_tokens / 1000) * MODEL_COSTS_PER_1K_TOKENS["input_usd"] +
+            (approx_output_tokens / 1000) * MODEL_COSTS_PER_1K_TOKENS["output_usd"]
+        )
+        print(f"  Approx input tokens:  {approx_input_tokens}")
+        print(f"  Approx output tokens: {approx_output_tokens}")
+        print(f"  Approx cost/query:    ${total_cost_usd / len(latencies):.6f}")
         print(f"{'='*50}")
 
 

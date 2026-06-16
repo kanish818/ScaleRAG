@@ -14,6 +14,7 @@ from typing import Optional
 from sqlalchemy import or_
 
 from app.core.database import SessionLocal
+from app.core.config import settings
 from app.models.document import Document
 from app.services import vector_store
 from app.services.chunker import chunk_text
@@ -52,7 +53,7 @@ class DocumentProcessor:
         self._queued_ids: set = set()
         self._lock = threading.Lock()
         self._stop = threading.Event()
-        self._worker: Optional[threading.Thread] = None
+        self._workers: list[threading.Thread] = []
         self._supervisor: Optional[threading.Thread] = None
 
     def start(self) -> None:
@@ -64,16 +65,24 @@ class DocumentProcessor:
 
     def stop(self) -> None:
         self._stop.set()
-        for t in (self._worker, self._supervisor):
+        for t in [*self._workers, self._supervisor]:
             if t and t.is_alive():
                 t.join(timeout=5)
+        self._workers = []
         logger.info("Document processor stopped.")
 
     def ensure_running(self) -> None:
-        if self._worker and self._worker.is_alive():
-            return
-        self._worker = threading.Thread(target=self._worker_loop, name="doc-worker", daemon=True)
-        self._worker.start()
+        desired_workers = max(1, settings.DOCUMENT_PROCESSOR_WORKERS)
+        self._workers = [worker for worker in self._workers if worker.is_alive()]
+        while len(self._workers) < desired_workers:
+            worker_id = len(self._workers) + 1
+            worker = threading.Thread(
+                target=self._worker_loop,
+                name=f"doc-worker-{worker_id}",
+                daemon=True,
+            )
+            worker.start()
+            self._workers.append(worker)
 
     def _start_supervisor(self) -> None:
         if self._supervisor and self._supervisor.is_alive():

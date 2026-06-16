@@ -38,6 +38,9 @@
 # Public demo bounded evaluation
 python scripts/rag_production_smoke_test.py --base-url https://scalerag-backend.onrender.com --count 100 --query-sample 20
 
+# Batched ingest with namespace isolation and readiness polling
+python scripts/bulk_ingest.py --url https://scalerag-backend.onrender.com --token YOUR_JWT_TOKEN --directory ./synthetic_docs --batch-size 25 --workers 1 --namespace eval-100 --poll-ready
+
 # Retrieval evaluation
 cd backend
 python eval/run_eval.py --dataset eval/datasets/eval_dataset.example.json --user-email you@example.com
@@ -49,6 +52,8 @@ python eval/run_eval.py --dataset eval/datasets/eval_dataset.example.json --user
 cd ..
 python scripts/benchmark.py --url http://localhost:8000 --token YOUR_JWT_TOKEN --doc-ids 1,2,3 --queries 50
 ```
+
+Both evaluation runners now emit approximate token volume and rough cost-per-query estimates so the submission covers the cost engineering requirement without requiring provider billing exports.
 
 ## Final submission note
 

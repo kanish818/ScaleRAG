@@ -31,6 +31,8 @@ The runner generates:
 - `citation_hit_rate` when `--with-llm` is enabled
 - `answer_phrase_coverage` when `--with-llm` is enabled
 - `no_answer_accuracy` for `question_type = "no_answer"` when `--with-llm` is enabled
+- approximate input/output token counts when `--with-llm` is enabled
+- approximate total and per-case query cost when `--with-llm` is enabled
 
 ## Usage
 
@@ -52,3 +54,11 @@ Reports are written to `eval/reports/` as:
 
 - `eval_report_<timestamp>.json`
 - `eval_report_<timestamp>.md`
+
+## Public demo guidance
+
+For the public deployment, keep evaluation bounded:
+
+- upload in batches of `25` to `50`
+- use ingest concurrency `1` to `2`
+- run sampled query sets instead of uncontrolled large public sweeps

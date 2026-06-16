@@ -38,6 +38,11 @@ NO_ANSWER_PATTERNS = (
     "not found in the provided documents",
     "could not find this information in the provided documents",
 )
+APPROX_TOKEN_CHARS = 4
+MODEL_COSTS_PER_1K_TOKENS = {
+    "input_usd": 0.0005,
+    "output_usd": 0.0015,
+}
 
 
 @dataclass
@@ -328,6 +333,13 @@ def _build_summary(results: List[CaseResult], with_llm: bool) -> Dict[str, Any]:
     }
 
     if with_llm:
+        generated_answers = [result.answer for result in valid_results if result.answer]
+        approx_input_tokens = sum(max(1, len(result.question) // APPROX_TOKEN_CHARS) for result in valid_results)
+        approx_output_tokens = sum(max(1, len(answer) // APPROX_TOKEN_CHARS) for answer in generated_answers)
+        approx_total_cost_usd = (
+            (approx_input_tokens / 1000) * MODEL_COSTS_PER_1K_TOKENS["input_usd"] +
+            (approx_output_tokens / 1000) * MODEL_COSTS_PER_1K_TOKENS["output_usd"]
+        )
         summary.update(
             {
                 "citation_hit_rate": round(_mean([1.0 if r.citation_hit else 0.0 for r in answerable]), 4),
@@ -336,6 +348,13 @@ def _build_summary(results: List[CaseResult], with_llm: bool) -> Dict[str, Any]:
                     _mean([1.0 if bool(score) else 0.0 for score in no_answer_scores]),
                     4,
                 ) if no_answer_scores else None,
+                "approx_input_tokens": approx_input_tokens,
+                "approx_output_tokens": approx_output_tokens,
+                "approx_total_cost_usd": round(approx_total_cost_usd, 6),
+                "approx_cost_per_case_usd": round(
+                    approx_total_cost_usd / len(valid_results),
+                    6,
+                ) if valid_results else None,
             }
         )
 
@@ -378,6 +397,10 @@ def _build_markdown_report(
                 f"- Citation hit rate: {summary.get('citation_hit_rate')}",
                 f"- Answer phrase coverage: {summary.get('answer_phrase_coverage')}",
                 f"- No-answer accuracy: {summary.get('no_answer_accuracy')}",
+                f"- Approx input tokens: {summary.get('approx_input_tokens')}",
+                f"- Approx output tokens: {summary.get('approx_output_tokens')}",
+                f"- Approx total cost (USD): {summary.get('approx_total_cost_usd')}",
+                f"- Approx cost per case (USD): {summary.get('approx_cost_per_case_usd')}",
             ]
         )
 
