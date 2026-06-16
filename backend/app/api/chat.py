@@ -150,6 +150,15 @@ def _inject_summaries(chunks: List[dict], docs: List[Document], question: str) -
     return summary_chunks + chunks if summary_chunks else chunks
 
 
+def _is_abstention_answer(text: str) -> bool:
+    low = (text or "").lower()
+    return (
+        "i could not find this information in the provided documents" in low
+        or "i could not find this information" in low
+        or "not found in the provided documents" in low
+    )
+
+
 # ── Routes ────────────────────────────────────────────────────────────────────
 
 @router.get("/conversations", response_model=List[ConversationOut])
@@ -342,20 +351,21 @@ async def stream_conversation(
         h_score, h_label = score_hallucination(full_response, chunks)
 
         # Sources
-        seen = set()
         sources = []
-        for chunk in chunks:
-            key = (chunk.get("filename", ""), chunk.get("page_num", 0), chunk.get("chunk_index", -1))
-            if key in seen:
-                continue
-            seen.add(key)
-            sources.append(
-                {
-                    "filename": chunk.get("filename", ""),
-                    "page_num": chunk.get("page_num", 0),
-                    "text": chunk.get("text", "")[:400],
-                }
-            )
+        if not _is_abstention_answer(full_response):
+            seen = set()
+            for chunk in chunks:
+                key = (chunk.get("filename", ""), chunk.get("page_num", 0), chunk.get("chunk_index", -1))
+                if key in seen:
+                    continue
+                seen.add(key)
+                sources.append(
+                    {
+                        "filename": chunk.get("filename", ""),
+                        "page_num": chunk.get("page_num", 0),
+                        "text": chunk.get("text", "")[:400],
+                    }
+                )
 
         # Persist assistant message
         from app.core.database import SessionLocal
