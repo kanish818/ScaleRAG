@@ -122,6 +122,7 @@ def hybrid_search(
     query: str,
     query_embedding: List[float],
     user_id: int,
+    namespace: str,
     doc_ids: List[int],
     n_results: int = 5,
 ) -> List[Dict[str, Any]]:
@@ -135,6 +136,7 @@ def hybrid_search(
     vector_results = vector_store.search(
         query_embedding=query_embedding,
         user_id=user_id,
+        namespace=namespace,
         doc_ids=doc_ids,
         n_results=max(n_results * 3, 15),
     )
@@ -142,7 +144,7 @@ def hybrid_search(
     logger.info("Vector search: %d results", len(vector_results))
 
     # 2. BM25 sparse search
-    all_chunks = vector_store.get_all_chunks_for_docs(user_id=user_id, doc_ids=doc_ids)
+    all_chunks = vector_store.get_all_chunks_for_docs(user_id=user_id, namespace=namespace, doc_ids=doc_ids)
     all_chunks = filter_results_by_doc_ids(all_chunks, query_doc_ids)
     bm25_results: List[Dict[str, Any]] = []
     if all_chunks:

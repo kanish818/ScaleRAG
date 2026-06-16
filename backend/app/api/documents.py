@@ -6,7 +6,7 @@ import logging
 import uuid
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile, status
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile, status
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -17,6 +17,7 @@ from app.models.document import Document
 from app.models.user import User
 from app.services import vector_store
 from app.services.document_processor import processor
+from app.services.namespaces import DEFAULT_NAMESPACE, validate_namespace
 from app.services.rate_limiter import rate_limiter
 from app.services.supabase_storage import storage_service
 
@@ -35,6 +36,7 @@ ALLOWED_EXTENSIONS = {
 
 class DocumentOut(BaseModel):
     id: int
+    namespace: str
     filename: str
     file_type: str
     file_size: int
@@ -51,6 +53,7 @@ class DocumentOut(BaseModel):
 def _doc_out(d: Document) -> DocumentOut:
     return DocumentOut(
         id=d.id, filename=d.filename, file_type=d.file_type or "pdf",
+        namespace=d.namespace or DEFAULT_NAMESPACE,
         file_size=d.file_size, page_count=d.page_count, chunk_count=d.chunk_count,
         status=d.status, processing_error=d.processing_error, summary_text=d.summary_text,
         created_at=d.created_at.isoformat() if d.created_at else "",
@@ -62,10 +65,12 @@ def _doc_out(d: Document) -> DocumentOut:
 async def upload_documents(
     request: Request,
     files: List[UploadFile] = File(...),
+    namespace: str = Form(DEFAULT_NAMESPACE),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     """Upload PDF, HTML, or CSV files for ingestion."""
+    namespace = validate_namespace(namespace)
     rate_limiter.enforce(
         f"upload:user:{current_user.id}",
         settings.UPLOAD_RATE_LIMIT_RPM,
@@ -104,7 +109,7 @@ async def upload_documents(
             raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Storage upload failed. Try again.")
 
         doc = Document(
-            user_id=current_user.id, filename=fname, file_type=file_type,
+            user_id=current_user.id, namespace=namespace, filename=fname, file_type=file_type,
             storage_path=key, storage_bucket=settings.SUPABASE_STORAGE_BUCKET,
             file_size=len(content), status="queued",
         )
@@ -120,17 +125,42 @@ async def upload_documents(
 
 @router.get("/", response_model=List[DocumentOut])
 def list_documents(
+    namespace: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
     processor.ensure_running()
-    docs = (
-        db.query(Document)
+    query = db.query(Document).filter(Document.user_id == current_user.id)
+    if namespace:
+        query = query.filter(Document.namespace == validate_namespace(namespace))
+    docs = query.order_by(Document.created_at.desc()).all()
+    return [_doc_out(d) for d in docs]
+
+
+class NamespaceOut(BaseModel):
+    namespace: str
+    document_count: int
+
+
+@router.get("/namespaces", response_model=List[NamespaceOut])
+def list_namespaces(
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        db.query(Document.namespace)
         .filter(Document.user_id == current_user.id)
-        .order_by(Document.created_at.desc())
+        .distinct()
         .all()
     )
-    return [_doc_out(d) for d in docs]
+    result = []
+    for (namespace,) in rows:
+        count = db.query(Document).filter(
+            Document.user_id == current_user.id,
+            Document.namespace == (namespace or DEFAULT_NAMESPACE),
+        ).count()
+        result.append(NamespaceOut(namespace=namespace or DEFAULT_NAMESPACE, document_count=count))
+    return sorted(result, key=lambda item: item.namespace)
 
 
 @router.delete("/{doc_id}", status_code=status.HTTP_204_NO_CONTENT)
@@ -143,7 +173,7 @@ def delete_document(
     if not doc:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Document not found.")
 
-    vector_store.delete_document(user_id=current_user.id, doc_id=doc_id)
+    vector_store.delete_document(user_id=current_user.id, namespace=doc.namespace or DEFAULT_NAMESPACE, doc_id=doc_id)
     if doc.storage_path:
         try:
             storage_service.delete_object(doc.storage_path)
@@ -151,4 +181,26 @@ def delete_document(
             logger.warning("Storage delete failed for doc_id=%d: %s", doc_id, exc)
 
     db.delete(doc)
+    db.commit()
+
+
+@router.delete("/namespaces/{namespace}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_namespace(
+    namespace: str,
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    namespace = validate_namespace(namespace)
+    docs = db.query(Document).filter(
+        Document.user_id == current_user.id,
+        Document.namespace == namespace,
+    ).all()
+    for doc in docs:
+        vector_store.delete_document(user_id=current_user.id, namespace=namespace, doc_id=doc.id)
+        if doc.storage_path:
+            try:
+                storage_service.delete_object(doc.storage_path)
+            except Exception as exc:
+                logger.warning("Storage delete failed for namespace=%s doc_id=%d: %s", namespace, doc.id, exc)
+        db.delete(doc)
     db.commit()

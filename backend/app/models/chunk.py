@@ -10,6 +10,7 @@ class DocumentChunk(Base):
     id = Column(Integer, primary_key=True, index=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    namespace = Column(String, nullable=False, default="default", index=True)
     chunk_index = Column(Integer, nullable=False)
     filename = Column(String, nullable=False)
     page_num = Column(Integer, nullable=False, default=0)
@@ -24,6 +25,7 @@ class DocumentEmbedding(Base):
     chunk_id = Column(Integer, ForeignKey("document_chunks.id", ondelete="CASCADE"), primary_key=True, index=True)
     document_id = Column(Integer, ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    namespace = Column(String, nullable=False, default="default", index=True)
     embedding = Column(Vector(768), nullable=False)
 
 

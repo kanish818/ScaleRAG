@@ -188,8 +188,14 @@ class DocumentProcessor:
                 texts = [c["text"] for c in chunks]
                 embeddings = embed_texts(texts, task_type="RETRIEVAL_DOCUMENT", heartbeat=lambda: self._heartbeat(db, doc))
 
-                vector_store.delete_document(user_id=doc.user_id, doc_id=doc.id)
-                vector_store.add_chunks(chunks=chunks, embeddings=embeddings, user_id=doc.user_id, doc_id=doc.id)
+                vector_store.delete_document(user_id=doc.user_id, namespace=doc.namespace or "default", doc_id=doc.id)
+                vector_store.add_chunks(
+                    chunks=chunks,
+                    embeddings=embeddings,
+                    user_id=doc.user_id,
+                    doc_id=doc.id,
+                    namespace=doc.namespace or "default",
+                )
 
                 doc.page_count = len(pages)
                 doc.chunk_count = len(chunks)

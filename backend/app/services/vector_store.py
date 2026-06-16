@@ -35,6 +35,7 @@ def add_chunks(
     embeddings: List[List[float]],
     user_id: int,
     doc_id: int,
+    namespace: str,
 ) -> None:
     if not chunks:
         return
@@ -45,6 +46,7 @@ def add_chunks(
             row = DocumentChunk(
                 document_id=doc_id,
                 user_id=user_id,
+                namespace=namespace,
                 chunk_index=chunk["chunk_index"],
                 filename=chunk["filename"],
                 page_num=chunk["page_num"],
@@ -60,6 +62,7 @@ def add_chunks(
                 chunk_id=chunk_row.id,
                 document_id=doc_id,
                 user_id=user_id,
+                namespace=namespace,
                 embedding=emb,
             ))
         db.commit()
@@ -74,6 +77,7 @@ def add_chunks(
 def search(
     query_embedding: List[float],
     user_id: int,
+    namespace: str,
     doc_ids: List[int],
     n_results: int = 10,
 ) -> List[Dict[str, Any]]:
@@ -86,6 +90,7 @@ def search(
                 select(DocumentChunk, DocumentEmbedding.embedding)
                 .join(DocumentEmbedding, DocumentEmbedding.chunk_id == DocumentChunk.id)
                 .where(DocumentEmbedding.user_id == user_id)
+                .where(DocumentEmbedding.namespace == namespace)
                 .where(DocumentEmbedding.document_id.in_(doc_ids))
             )
             rows = db.execute(stmt).all()
@@ -113,6 +118,7 @@ def search(
             select(DocumentChunk, distance.label("distance"))
             .join(DocumentEmbedding, DocumentEmbedding.chunk_id == DocumentChunk.id)
             .where(DocumentEmbedding.user_id == user_id)
+            .where(DocumentEmbedding.namespace == namespace)
             .where(DocumentEmbedding.document_id.in_(doc_ids))
             .order_by(distance.asc())
             .limit(n_results)
@@ -136,7 +142,7 @@ def search(
         db.close()
 
 
-def get_all_chunks_for_docs(user_id: int, doc_ids: List[int]) -> List[Dict[str, Any]]:
+def get_all_chunks_for_docs(user_id: int, namespace: str, doc_ids: List[int]) -> List[Dict[str, Any]]:
     if not doc_ids:
         return []
     db: Session = SessionLocal()
@@ -144,6 +150,7 @@ def get_all_chunks_for_docs(user_id: int, doc_ids: List[int]) -> List[Dict[str, 
         stmt = (
             select(DocumentChunk)
             .where(DocumentChunk.user_id == user_id)
+            .where(DocumentChunk.namespace == namespace)
             .where(DocumentChunk.document_id.in_(doc_ids))
             .order_by(DocumentChunk.document_id.asc(), DocumentChunk.chunk_index.asc())
         )
@@ -164,12 +171,13 @@ def get_all_chunks_for_docs(user_id: int, doc_ids: List[int]) -> List[Dict[str, 
         db.close()
 
 
-def delete_document(user_id: int, doc_id: int) -> None:
+def delete_document(user_id: int, namespace: str, doc_id: int) -> None:
     db: Session = SessionLocal()
     try:
         chunk_ids = db.execute(
             select(DocumentChunk.id)
             .where(DocumentChunk.user_id == user_id)
+            .where(DocumentChunk.namespace == namespace)
             .where(DocumentChunk.document_id == doc_id)
         ).scalars().all()
         if chunk_ids:
@@ -178,7 +186,32 @@ def delete_document(user_id: int, doc_id: int) -> None:
             )
         db.query(DocumentChunk).filter(
             DocumentChunk.user_id == user_id,
+            DocumentChunk.namespace == namespace,
             DocumentChunk.document_id == doc_id,
+        ).delete(synchronize_session=False)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    finally:
+        db.close()
+
+
+def delete_namespace(user_id: int, namespace: str) -> None:
+    db: Session = SessionLocal()
+    try:
+        chunk_ids = db.execute(
+            select(DocumentChunk.id)
+            .where(DocumentChunk.user_id == user_id)
+            .where(DocumentChunk.namespace == namespace)
+        ).scalars().all()
+        if chunk_ids:
+            db.query(DocumentEmbedding).filter(DocumentEmbedding.chunk_id.in_(chunk_ids)).delete(
+                synchronize_session=False
+            )
+        db.query(DocumentChunk).filter(
+            DocumentChunk.user_id == user_id,
+            DocumentChunk.namespace == namespace,
         ).delete(synchronize_session=False)
         db.commit()
     except Exception:

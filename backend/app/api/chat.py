@@ -21,6 +21,7 @@ from app.services.embedder import embed_query
 from app.services.hallucination_guard import score_hallucination
 from app.services.injection_guard import check_injection, sanitize_retrieved_chunks
 from app.services.llm import stream_chat
+from app.services.namespaces import DEFAULT_NAMESPACE, validate_namespace
 from app.services.rate_limiter import rate_limiter
 from app.services.retriever import choose_top_k, hybrid_search
 
@@ -33,11 +34,13 @@ router = APIRouter()
 class ConversationCreate(BaseModel):
     title: str = "New Conversation"
     document_ids: Optional[List[int]] = []
+    namespace: Optional[str] = DEFAULT_NAMESPACE
 
 
 class ConversationOut(BaseModel):
     id: int
     title: str
+    namespace: str
     created_at: str
     message_count: int
     document_ids: List[int] = []
@@ -55,6 +58,7 @@ class MessageOut(BaseModel):
 class StreamRequest(BaseModel):
     question: str
     document_ids: List[int] = []
+    namespace: Optional[str] = None
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
@@ -93,11 +97,12 @@ def _persist_conv_docs(conv_id: int, doc_ids: List[int], db: Session) -> List[in
     return _conv_doc_ids(conv_id, db)
 
 
-def _allowed_docs(user_id: int, doc_ids: List[int], db: Session) -> List[Document]:
+def _allowed_docs(user_id: int, namespace: str, doc_ids: List[int], db: Session) -> List[Document]:
     if not doc_ids:
         return []
     return db.query(Document).filter(
         Document.user_id == user_id,
+        Document.namespace == namespace,
         Document.status == "ready",
         Document.id.in_(doc_ids),
     ).all()
@@ -161,6 +166,7 @@ def list_conversations(
         doc_ids = _conv_doc_ids(conv.id, db)
         result.append(ConversationOut(
             id=conv.id, title=conv.title,
+            namespace=conv.namespace or DEFAULT_NAMESPACE,
             created_at=conv.created_at.isoformat() if conv.created_at else "",
             message_count=count, document_ids=doc_ids,
         ))
@@ -173,14 +179,18 @@ def create_conversation(
     current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    namespace = validate_namespace(payload.namespace)
     doc_ids = list(dict.fromkeys(payload.document_ids or []))
     if doc_ids:
-        owned = {d.id for d in _allowed_docs(current_user.id, doc_ids, db)}
+        owned_docs = _allowed_docs(current_user.id, namespace, doc_ids, db)
+        owned = {d.id for d in owned_docs}
         invalid = [d for d in doc_ids if d not in owned]
         if invalid:
             raise HTTPException(status.HTTP_403_FORBIDDEN, f"Invalid document IDs: {invalid}")
+        if any((d.namespace or DEFAULT_NAMESPACE) != namespace for d in owned_docs):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "All conversation documents must belong to the same namespace.")
 
-    conv = Conversation(user_id=current_user.id, title=payload.title or "New Conversation")
+    conv = Conversation(user_id=current_user.id, namespace=namespace, title=payload.title or "New Conversation")
     db.add(conv)
     db.commit()
     db.refresh(conv)
@@ -191,6 +201,7 @@ def create_conversation(
 
     return ConversationOut(
         id=conv.id, title=conv.title,
+        namespace=conv.namespace or DEFAULT_NAMESPACE,
         created_at=conv.created_at.isoformat() if conv.created_at else "",
         message_count=0, document_ids=doc_ids,
     )
@@ -255,8 +266,12 @@ async def stream_conversation(
         raise HTTPException(status.HTTP_400_BAD_REQUEST, reason)
 
     conv = _get_conv(conv_id, current_user.id, db)
+    conv_namespace = conv.namespace or DEFAULT_NAMESPACE
     scoped_ids = _conv_doc_ids(conv_id, db)
     requested_ids = list(dict.fromkeys(payload.document_ids or []))
+    requested_namespace = validate_namespace(payload.namespace or conv_namespace)
+    if requested_namespace != conv_namespace:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Conversation namespace cannot be changed.")
 
     if scoped_ids:
         doc_ids = scoped_ids
@@ -265,7 +280,7 @@ async def stream_conversation(
         if doc_ids:
             doc_ids = _persist_conv_docs(conv_id, doc_ids, db)
 
-    allowed_docs = _allowed_docs(current_user.id, doc_ids, db)
+    allowed_docs = _allowed_docs(current_user.id, conv_namespace, doc_ids, db)
     allowed_ids = {d.id for d in allowed_docs}
     invalid = [d for d in doc_ids if d not in allowed_ids]
     if invalid:
@@ -298,7 +313,7 @@ async def stream_conversation(
         try:
             chunks = hybrid_search(
                 query=question, query_embedding=q_emb,
-                user_id=user_id, doc_ids=doc_ids,
+                user_id=user_id, namespace=conv_namespace, doc_ids=doc_ids,
                 n_results=choose_top_k(question),
             )
         except Exception as exc:

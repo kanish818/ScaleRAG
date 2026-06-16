@@ -8,6 +8,7 @@ class Document(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    namespace = Column(String, nullable=False, default="default", index=True)
     filename = Column(String, nullable=False)
     file_type = Column(String, nullable=False, default="pdf")   # pdf | html | csv
     storage_path = Column(String, nullable=True)

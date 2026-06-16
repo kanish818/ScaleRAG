@@ -1,7 +1,7 @@
 from typing import Generator
 from pathlib import Path
 
-from sqlalchemy import create_engine, text
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from sqlalchemy.engine import make_url
@@ -77,6 +77,7 @@ def create_tables() -> None:
         with engine.begin() as connection:
             connection.execute(text("CREATE EXTENSION IF NOT EXISTS vector"))
     Base.metadata.create_all(bind=engine)
+    _ensure_namespace_schema()
     if not _is_sqlite_url(DATABASE_URL):
         with engine.begin() as connection:
             # Gemini's 768-dimensional output fits pgvector's HNSW vector limit.
@@ -109,3 +110,41 @@ def create_tables() -> None:
                 """
             ))
     logger.info("Database tables created / verified.")
+
+
+def _ensure_namespace_schema() -> None:
+    inspector = inspect(engine)
+    targets = {
+        "documents": "namespace",
+        "document_chunks": "namespace",
+        "document_embeddings": "namespace",
+        "conversations": "namespace",
+    }
+    for table_name, column_name in targets.items():
+        existing = {column["name"] for column in inspector.get_columns(table_name)}
+        if column_name in existing:
+            continue
+        ddl = (
+            f"ALTER TABLE {table_name} "
+            f"ADD COLUMN {column_name} VARCHAR NOT NULL DEFAULT 'default'"
+        )
+        with engine.begin() as connection:
+            connection.execute(text(ddl))
+
+    if _is_sqlite_url(DATABASE_URL):
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_documents_namespace ON documents (namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_namespace ON document_chunks (namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_document_embeddings_namespace ON document_embeddings (namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_conversations_namespace ON conversations (namespace)",
+        ]
+    else:
+        index_statements = [
+            "CREATE INDEX IF NOT EXISTS ix_documents_namespace ON documents (namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_document_chunks_namespace ON document_chunks (namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_document_embeddings_namespace ON document_embeddings (namespace)",
+            "CREATE INDEX IF NOT EXISTS ix_conversations_namespace ON conversations (namespace)",
+        ]
+    with engine.begin() as connection:
+        for stmt in index_statements:
+            connection.execute(text(stmt))
