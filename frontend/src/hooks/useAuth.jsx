@@ -5,6 +5,34 @@ import axios from 'axios';
 const AuthContext = createContext(null);
 const runtimeOrigin = window.__SCALERAG_CONFIG__?.API_ORIGIN || '';
 const BACKEND_URL = (runtimeOrigin || import.meta.env.VITE_API_ORIGIN || '').replace(/\/+$/, '');
+const TRANSIENT_STATUSES = new Set([502, 503, 504]);
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function withTransientRetry(fn, retries = 3) {
+  let lastError = null;
+  for (let attempt = 0; attempt <= retries; attempt += 1) {
+    try {
+      return await fn();
+    } catch (err) {
+      lastError = err;
+      const status = err?.response?.status;
+      if (!TRANSIENT_STATUSES.has(status) || attempt >= retries) {
+        throw err;
+      }
+      await sleep(1000 * (attempt + 1));
+    }
+  }
+  throw lastError;
+}
+
+function oauthErrorMessage(code) {
+  if (code === 'oauth_failed') return 'Google sign-in failed. Please try again.';
+  if (code === 'missing_user_info') return 'Google sign-in did not return the required profile information.';
+  return 'Google sign-in failed.';
+}
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
@@ -21,6 +49,13 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const stored = localStorage.getItem('scalerag_token');
     (async () => {
+      const params = new URLSearchParams(window.location.search);
+      const oauthError = params.get('error');
+      if (oauthError) {
+        setError(oauthErrorMessage(oauthError));
+        window.history.replaceState({}, '', window.location.pathname);
+      }
+
       try {
         const pingUrl = BACKEND_URL ? `${BACKEND_URL}/` : '/api/auth/me';
         const timer = setTimeout(() => setWakingUp(true), 3000);
@@ -43,12 +78,18 @@ export function AuthProvider({ children }) {
 
   const handleGoogleCallback = useCallback(async () => {
     const params = new URLSearchParams(window.location.search);
+    const oauthError = params.get('error');
+    if (oauthError) {
+      setError(oauthErrorMessage(oauthError));
+      window.history.replaceState({}, '', window.location.pathname);
+      return false;
+    }
     const t = params.get('token');
     if (!t) return false;
     persistToken(t);
     window.history.replaceState({}, '', window.location.pathname);
     try {
-      const me = await getMe();
+      const me = await withTransientRetry(() => getMe());
       setUser(me);
       return true;
     } catch {
@@ -61,7 +102,7 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (email, password) => {
     setError(null);
     try {
-      const data = await apiLogin(email, password);
+      const data = await withTransientRetry(() => apiLogin(email, password));
       persistToken(data.access_token);
       setUser(data.user);
       return data;
@@ -75,7 +116,7 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (name, email, password) => {
     setError(null);
     try {
-      const data = await apiRegister(name, email, password);
+      const data = await withTransientRetry(() => apiRegister(name, email, password));
       persistToken(data.access_token);
       setUser(data.user);
       return data;

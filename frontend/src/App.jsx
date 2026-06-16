@@ -28,7 +28,7 @@ function AppContent() {
 
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
-    if (params.has('token')) handleGoogleCallback();
+    if (params.has('token') || params.has('error')) handleGoogleCallback();
   }, []); // eslint-disable-line
 
   useEffect(() => {
