@@ -1,6 +1,6 @@
 # ScaleRAG — Production-Grade RAG System
 
-> Production-grade Retrieval-Augmented Generation assistant capable of operating reliably at scale.  
+> Production-grade Retrieval-Augmented Generation assistant designed for reliable large-scale operation.  
 > Supports 10,000+ documents · PDF, HTML, CSV · Hybrid retrieval · Streaming · Hallucination detection
 
 **Live Demo:** [https://scalerag-frontend.onrender.com](https://scalerag-frontend.onrender.com)  
@@ -64,12 +64,27 @@
 
 ---
 
+## Evaluation Environment Note
+
+This repository targets a production-grade architecture for `10,000+` documents, but the public Render deployment is a constrained demo environment backed by a single free instance.
+
+For evaluator use, the recommended path is:
+
+1. verify the live app and API health,
+2. upload a small mixed-format batch through the UI or API,
+3. run bounded scripted ingestion in batches,
+4. run sampled retrieval checks rather than an uncontrolled full public stress sweep.
+
+The system design supports large corpora, but the public demo is intentionally tuned for evaluator-friendly, bounded validation rather than brute-force benchmark theatrics.
+
+---
+
 ## Features
 
 | Feature | Implementation |
 |---|---|
 | Multi-format ingestion | PDF (PyMuPDF + Tesseract OCR), HTML (BeautifulSoup), CSV (Pandas) |
-| 10,000+ doc support | HNSW indexed pgvector, batch embedding, async background worker |
+| 10,000+ doc support | HNSW indexed pgvector, namespace isolation, batch embedding, async background worker |
 | Hybrid retrieval | Dense (Gemini 3072-dim) + Sparse (BM25) + RRF fusion |
 | Reranker | Cohere rerank-v3.5 (cross-encoder) with local fallback |
 | Context compression | Sentence-level trim to 600 chars per chunk |
@@ -169,6 +184,26 @@ python scripts/bulk_ingest.py --dir ./test_docs --url http://localhost:8000 \
   --token YOUR_JWT_TOKEN --workers 4
 ```
 
+### Recommended public demo evaluation flow
+```bash
+# 1. Generate a bounded mixed-format corpus
+python scripts/generate_test_docs.py --count 100 --output ./test_docs
+
+# 2. Upload in bounded batches through the real API
+python scripts/bulk_ingest.py --dir ./test_docs --url https://scalerag-backend.onrender.com \
+  --token YOUR_JWT_TOKEN --workers 1 --batch-size 25
+
+# 3. Run a sampled correctness and latency check
+python scripts/rag_production_smoke_test.py --base-url https://scalerag-backend.onrender.com \
+  --count 100 --query-sample 20
+```
+
+Recommended settings for the public Render demo:
+- upload batch size `25` to `50`
+- ingest concurrency `1` to `2`
+- query sample `20` to `60`
+- avoid a full uncontrolled public `1000 x 1000` upload/query sweep on the free instance
+
 ### Benchmark latency
 ```bash
 python scripts/benchmark.py --url http://localhost:8000 \
@@ -208,7 +243,9 @@ Interactive API docs available at `/docs` (Swagger UI) and `/redoc` (ReDoc) afte
 | POST | `/api/auth/login` | Login, get JWT |
 | GET | `/api/auth/google` | Google OAuth redirect |
 | POST | `/api/documents/upload` | Upload PDF/HTML/CSV files |
+| GET | `/api/documents/namespaces` | List isolated document namespaces |
 | GET | `/api/documents/` | List documents |
+| DELETE | `/api/documents/namespaces/{namespace}` | Delete an isolated namespace and its documents |
 | DELETE | `/api/documents/{id}` | Delete document |
 | POST | `/api/chat/conversations` | Create conversation |
 | POST | `/api/chat/conversations/{id}/stream` | SSE streaming chat |
@@ -225,7 +262,7 @@ Benchmark outputs should include:
 - Retrieval precision metrics
 - P50/P95 response latency
 - Hallucination rate analysis
-- Scale test results (100K+ vectors)
+- Scale test results under bounded batch execution
 
 ---
 

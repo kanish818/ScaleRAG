@@ -31,4 +31,16 @@ flowchart LR
 - Context is compressed before generation to reduce latency and cost.
 - Generation streams over SSE and persists conversation history for follow-up questions.
 - Reliability features include prompt-injection checks, suspicious-context sanitization, rate limiting, worker retries, health checks, and model fallback.
+- Namespace isolation allows scripted evaluation and cleanup without touching unrelated user documents.
 - Production profile uses Supabase Postgres + pgvector; local/demo fallback works with SQLite plus Python cosine search.
+
+## Public demo note
+
+The live Render deployment is a bounded evaluation environment, not the final production sizing target. The intended evaluator path is:
+
+1. verify live health,
+2. upload a small mixed-format set,
+3. use scripted bulk ingestion in bounded batches,
+4. run sampled retrieval correctness checks.
+
+This preserves reliability on the public demo while still exercising the real end-to-end architecture.

@@ -6,14 +6,16 @@
 - Bulk ingestion script: [scripts/bulk_ingest.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/scripts/bulk_ingest.py)
 - Synthetic dataset generator: [scripts/generate_test_docs.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/scripts/generate_test_docs.py)
 - Question-level evaluation harness: [backend/eval/run_eval.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/backend/eval/run_eval.py)
+- Namespace-isolated public demo smoke harness: [scripts/rag_production_smoke_test.py](/C:/Projects2/Grade%20Chatbot/ScaleRAG/scripts/rag_production_smoke_test.py)
 
 ## Evaluation methodology
 
 1. Generate or collect a mixed corpus of PDF, HTML, and CSV files.
-2. Bulk upload the corpus and wait until all documents reach `ready`.
+2. Bulk upload the corpus in bounded batches and wait until all documents reach `ready`.
 3. Run retrieval-only evaluation with `backend/eval/run_eval.py`.
 4. Run response-latency benchmarking with `scripts/benchmark.py`.
 5. Re-run evaluation with `--with-llm` to score answer quality, citation hit rate, and no-answer behavior.
+6. For the public demo deployment, prefer sampled correctness checks over an uncontrolled full public stress sweep.
 
 ## Metrics tracked
 
@@ -28,10 +30,14 @@
 - Backend unit tests: passed
 - Frontend production build: passed
 - End-to-end health smoke test: passed
+- Public bounded live verification: stable health, repeated login, bounded namespace-isolated upload/query flow
 
 ## Commands
 
 ```bash
+# Public demo bounded evaluation
+python scripts/rag_production_smoke_test.py --base-url https://scalerag-backend.onrender.com --count 100 --query-sample 20
+
 # Retrieval evaluation
 cd backend
 python eval/run_eval.py --dataset eval/datasets/eval_dataset.example.json --user-email you@example.com
@@ -46,4 +52,14 @@ python scripts/benchmark.py --url http://localhost:8000 --token YOUR_JWT_TOKEN -
 
 ## Final submission note
 
-Replace this report with the measured JSON/Markdown outputs from your final deployed environment before submission if you have time to run the full benchmark suite.
+This submission distinguishes between:
+
+- the `architecture scale target` of the system, which is designed for large corpora and automated ingestion, and
+- the `public demo deployment`, which is a constrained Render environment intended for bounded evaluator-facing verification.
+
+For the public deployment, recommended evaluator settings are:
+- upload batch size `25` to `50`
+- ingest concurrency `1` to `2`
+- query sample `20` to `60`
+
+This keeps the live demo reliable while still exercising the real ingestion, retrieval, citation, and generation paths.

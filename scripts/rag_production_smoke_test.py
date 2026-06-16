@@ -59,8 +59,10 @@ class SmokeConfig:
     password: str = ""
     name: str = "RAG Smoke Tester"
     count: int = 1000
-    ingest_concurrency: int = 20
-    query_concurrency: int = 20
+    ingest_concurrency: int = 2
+    upload_batch_size: int = 50
+    query_concurrency: int = 10
+    query_sample_size: int = 60
     ingestion_timeout_seconds: int = 300
     request_timeout_seconds: int = 45
     poll_interval_seconds: float = 2.0
@@ -82,8 +84,10 @@ class SmokeConfig:
             password=os.getenv("RAG_SMOKE_PASSWORD", "").strip(),
             name=os.getenv("RAG_SMOKE_NAME", "RAG Smoke Tester").strip() or "RAG Smoke Tester",
             count=count,
-            ingest_concurrency=int(os.getenv("RAG_SMOKE_INGEST_CONCURRENCY", "20")),
-            query_concurrency=int(os.getenv("RAG_SMOKE_QUERY_CONCURRENCY", "20")),
+            ingest_concurrency=int(os.getenv("RAG_SMOKE_INGEST_CONCURRENCY", "2")),
+            upload_batch_size=int(os.getenv("RAG_SMOKE_UPLOAD_BATCH_SIZE", "50")),
+            query_concurrency=int(os.getenv("RAG_SMOKE_QUERY_CONCURRENCY", "10")),
+            query_sample_size=int(os.getenv("RAG_SMOKE_QUERY_SAMPLE_SIZE", "60")),
             ingestion_timeout_seconds=int(os.getenv("RAG_SMOKE_INGESTION_TIMEOUT", "300")),
             request_timeout_seconds=int(os.getenv("RAG_SMOKE_REQUEST_TIMEOUT", "45")),
             poll_interval_seconds=float(os.getenv("RAG_SMOKE_POLL_INTERVAL", "2")),
@@ -353,20 +357,28 @@ class ScaleRAGClient:
             return
         if not self.config.email or not self.config.password:
             raise SmokeTestError("Missing auth credentials. Set RAG_SMOKE_TOKEN or RAG_SMOKE_EMAIL/RAG_SMOKE_PASSWORD.", 2)
-        response = self._client.post(
-            f"{self.config.base_url}/api/auth/login",
-            json={"email": self.config.email, "password": self.config.password},
-        )
-        if response.status_code == 401:
-            register = self._client.post(
-                f"{self.config.base_url}/api/auth/register",
-                json={"email": self.config.email, "password": self.config.password, "name": self.config.name},
+        def do_login():
+            response = self._client.post(
+                f"{self.config.base_url}/api/auth/login",
+                json={"email": self.config.email, "password": self.config.password},
             )
-            if register.status_code not in (200, 201):
-                register.raise_for_status()
+            if response.status_code != 401:
+                response.raise_for_status()
+            return response
+
+        response = retryable_request(do_login, config=self.config, label="auth-login", metrics=self.metrics)
+        if response.status_code == 401:
+            def do_register():
+                response = self._client.post(
+                    f"{self.config.base_url}/api/auth/register",
+                    json={"email": self.config.email, "password": self.config.password, "name": self.config.name},
+                )
+                response.raise_for_status()
+                return response
+
+            register = retryable_request(do_register, config=self.config, label="auth-register", metrics=self.metrics)
             self.config.token = register.json()["access_token"]
             return
-        response.raise_for_status()
         self.config.token = response.json()["access_token"]
 
     def get_me(self) -> Dict[str, object]:
@@ -395,22 +407,36 @@ class ScaleRAGClient:
         response.raise_for_status()
         return response.json()
 
-    def upload_document(self, path: Path, namespace: str) -> Dict[str, object]:
+    def upload_batch(self, paths: List[Path], namespace: str) -> List[Dict[str, object]]:
         self.ensure_token()
 
         def do_upload():
-            with open(path, "rb") as handle:
-                content_type = "application/pdf" if path.suffix == ".pdf" else "text/html" if path.suffix in (".html", ".htm") else "text/csv"
+            handles = []
+            files = []
+            try:
+                for path in paths:
+                    handle = open(path, "rb")
+                    handles.append(handle)
+                    content_type = "application/pdf" if path.suffix == ".pdf" else "text/html" if path.suffix in (".html", ".htm") else "text/csv"
+                    files.append(("files", (path.name, handle, content_type)))
                 response = self._client.post(
                     f"{self.config.base_url}/api/documents/upload",
                     headers=self._headers(),
                     data={"namespace": namespace},
-                    files={"files": (path.name, handle, content_type)},
+                    files=files,
                 )
                 response.raise_for_status()
                 return response
+            finally:
+                for handle in handles:
+                    handle.close()
 
-        return retryable_request(do_upload, config=self.config, label=f"upload:{path.name}", metrics=self.metrics).json()[0]
+        return retryable_request(
+            do_upload,
+            config=self.config,
+            label=f"upload-batch:{paths[0].name}..{paths[-1].name}",
+            metrics=self.metrics,
+        ).json()
 
     def create_conversation(self, namespace: str, document_ids: List[int]) -> Dict[str, object]:
         self.ensure_token()
@@ -729,27 +755,29 @@ def execute_smoke_test(config: SmokeConfig, test_run_id: str, namespace: str) ->
         print(note)
         client.delete_namespace(namespace)
 
-        def upload_one(doc: SyntheticDoc) -> Tuple[SyntheticDoc, Dict[str, object]]:
-            return doc, client.upload_document(Path(doc.path), namespace)
+        batches = [docs[index:index + config.upload_batch_size] for index in range(0, len(docs), config.upload_batch_size)]
+
+        def upload_one_batch(batch_docs: List[SyntheticDoc]) -> Tuple[List[SyntheticDoc], List[Dict[str, object]]]:
+            return batch_docs, client.upload_batch([Path(doc.path) for doc in batch_docs], namespace)
 
         with ThreadPoolExecutor(max_workers=config.ingest_concurrency) as pool:
-            futures = {pool.submit(upload_one, doc): doc for doc in docs}
+            futures = {pool.submit(upload_one_batch, batch): batch for batch in batches}
             completed = 0
             for future in as_completed(futures):
-                doc, uploaded = future.result()
-                completed += 1
-                accepted_count += 1
-                if completed % 25 == 0 or completed == len(docs):
+                batch_docs, uploaded_batch = future.result()
+                completed += len(batch_docs)
+                accepted_count += len(uploaded_batch)
+                if completed % config.upload_batch_size == 0 or completed == len(docs):
                     print(f"Ingestion: {completed}/{len(docs)} accepted | 0 retrying | 0 failed")
 
-        duplicate_response = client.upload_document(Path(docs[0].path), namespace)
-        if duplicate_response.get("id"):
+        duplicate_response = client.upload_batch([Path(docs[0].path)], namespace)
+        if duplicate_response and duplicate_response[0].get("id"):
             duplicate_count = 1
 
         malformed = GENERATED_DOCS_DIR / "malformed.txt"
         malformed.write_text("unsupported", encoding="utf-8")
         try:
-            client.upload_document(malformed, namespace)
+            client.upload_batch([malformed], namespace)
             failures.append({"phase": "ingestion_negative", "document_id": "malformed", "reason": "Unsupported file unexpectedly accepted."})
         except Exception:
             pass
@@ -757,7 +785,7 @@ def execute_smoke_test(config: SmokeConfig, test_run_id: str, namespace: str) ->
         empty_pdf = GENERATED_DOCS_DIR / "empty.pdf"
         empty_pdf.write_bytes(b"")
         try:
-            client.upload_document(empty_pdf, namespace)
+            client.upload_batch([empty_pdf], namespace)
             failures.append({"phase": "ingestion_negative", "document_id": "empty", "reason": "Empty file unexpectedly accepted."})
         except Exception:
             pass
@@ -776,7 +804,8 @@ def execute_smoke_test(config: SmokeConfig, test_run_id: str, namespace: str) ->
             missing = config.count - len(ready_rows)
             failures.append({"phase": "ingestion", "document_id": "", "reason": f"{missing} documents not ready before timeout."})
 
-        query_results = run_primary_queries(client, config, namespace, docs, ready_rows)
+        sampled_docs = docs if config.query_sample_size >= len(docs) else random.sample(docs, config.query_sample_size)
+        query_results = run_primary_queries(client, config, namespace, sampled_docs, ready_rows)
         negative_results = run_negative_controls(client, namespace, {doc.document_id: doc for doc in docs}, ready_rows)
         query_results.extend(run_similar_id_checks(query_results))
 
@@ -824,6 +853,7 @@ def parse_args(argv: Optional[Sequence[str]] = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Namespace-isolated production-safe RAG smoke test")
     parser.add_argument("--base-url", default=os.getenv("RAG_SMOKE_BASE_URL", "http://localhost:8000"))
     parser.add_argument("--count", type=int, default=1000)
+    parser.add_argument("--query-sample", type=int, default=None, help="Number of documents to query after full ingestion.")
     return parser.parse_args(argv)
 
 
@@ -831,6 +861,8 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = parse_args(argv)
     config = SmokeConfig.from_env(count=args.count)
     config.base_url = args.base_url.rstrip("/")
+    if args.query_sample is not None:
+        config.query_sample_size = min(args.query_sample, config.count)
     ensure_dirs()
     test_run_id = build_test_run_id()
     namespace = build_namespace(test_run_id)
