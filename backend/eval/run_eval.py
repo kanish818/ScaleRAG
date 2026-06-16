@@ -81,6 +81,11 @@ def _parse_args() -> argparse.Namespace:
     parser.add_argument("--user-id", type=int, help="User ID whose uploaded documents should be evaluated.")
     parser.add_argument("--top-k", type=int, default=5, help="Number of retrieved chunks to score.")
     parser.add_argument(
+        "--namespace",
+        default="default",
+        help="Document namespace to evaluate. Defaults to the standard app namespace.",
+    )
+    parser.add_argument(
         "--with-llm",
         action="store_true",
         help="Also run generation and score answer/citation behavior.",
@@ -129,10 +134,10 @@ def _normalise_filename(name: str) -> str:
     return name.strip().lower()
 
 
-def _resolve_doc_ids(session, user_id: int, filenames: List[str]) -> Tuple[List[int], List[str]]:
+def _resolve_doc_ids(session, user_id: int, namespace: str, filenames: List[str]) -> Tuple[List[int], List[str]]:
     docs = (
         session.query(Document)
-        .filter(Document.user_id == user_id, Document.status == "ready")
+        .filter(Document.user_id == user_id, Document.namespace == namespace, Document.status == "ready")
         .all()
     )
     filename_map = {_normalise_filename(doc.filename): doc.id for doc in docs}
@@ -198,10 +203,10 @@ def _no_answer_correct(answer: Optional[str], should_answer: bool) -> Optional[b
     return not detected_no_answer if should_answer else detected_no_answer
 
 
-def _run_case(case: EvalCase, user: User, top_k: int, with_llm: bool) -> CaseResult:
+def _run_case(case: EvalCase, user: User, namespace: str, top_k: int, with_llm: bool) -> CaseResult:
     session = SessionLocal()
     try:
-        doc_ids, missing_documents = _resolve_doc_ids(session, user.id, case.document_filenames)
+        doc_ids, missing_documents = _resolve_doc_ids(session, user.id, namespace, case.document_filenames)
         if missing_documents:
             return CaseResult(
                 case_id=case.case_id,
@@ -229,6 +234,7 @@ def _run_case(case: EvalCase, user: User, top_k: int, with_llm: bool) -> CaseRes
             query=case.question,
             query_embedding=query_embedding,
             user_id=user.id,
+            namespace=namespace,
             doc_ids=doc_ids,
             n_results=max(top_k, 5),
         )[:top_k]
@@ -339,6 +345,7 @@ def _build_summary(results: List[CaseResult], with_llm: bool) -> Dict[str, Any]:
 def _build_markdown_report(
     dataset_path: Path,
     user: User,
+    namespace: str,
     summary: Dict[str, Any],
     results: List[CaseResult],
     with_llm: bool,
@@ -349,6 +356,7 @@ def _build_markdown_report(
         f"- Generated: {datetime.now(timezone.utc).isoformat()}",
         f"- Dataset: `{dataset_path}`",
         f"- User: `{user.email}` (id={user.id})",
+        f"- Namespace: `{namespace}`",
         f"- LLM scoring enabled: `{with_llm}`",
         "",
         "## Summary",
@@ -415,7 +423,7 @@ def main() -> int:
     finally:
         session.close()
 
-    results = [_run_case(case, user, args.top_k, args.with_llm) for case in cases]
+    results = [_run_case(case, user, args.namespace, args.top_k, args.with_llm) for case in cases]
     summary = _build_summary(results, args.with_llm)
 
     timestamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
@@ -427,6 +435,7 @@ def main() -> int:
         "dataset": str(dataset_path),
         "user_email": user.email,
         "user_id": user.id,
+        "namespace": args.namespace,
         "with_llm": args.with_llm,
         "summary": summary,
         "results": [asdict(result) for result in results],
@@ -434,7 +443,7 @@ def main() -> int:
 
     json_report_path.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     md_report_path.write_text(
-        _build_markdown_report(dataset_path, user, summary, results, args.with_llm),
+        _build_markdown_report(dataset_path, user, args.namespace, summary, results, args.with_llm),
         encoding="utf-8",
     )
 
